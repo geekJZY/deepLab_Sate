@@ -4,7 +4,7 @@
 from __future__ import absolute_import, division, print_function
 
 import os.path as osp
-
+import time
 import click
 import cv2
 import numpy as np
@@ -17,7 +17,7 @@ from tqdm import tqdm
 from utils.visualizer import Visualizer
 from data.data_loading import *
 from models import DeepLabV2_ResNet101_MSC
-from utils.loss import CrossEntropyLoss2d
+from utils.loss import CrossEntropyLoss2d, SoftCrossEntropyLoss2d
 
 
 def load_network(saveDir, network, network_label, epoch_label):
@@ -69,7 +69,7 @@ def resize_target(target, size):
     new_target = np.zeros((target.shape[0], size, size), np.int32)
     for i, t in enumerate(target.numpy()):
         new_target[i, ...] = cv2.resize(t, (size,) * 2, interpolation=cv2.INTER_NEAREST)
-    return torch.from_numpy(new_target).long()
+    return new_target
 
 
 def main():
@@ -85,12 +85,14 @@ def main():
 
     # Configuration
     CONFIG = Dict(yaml.load(open(config)))
+    CONFIG.SAVE_DIR = osp.join(CONFIG.SAVE_DIR, CONFIG.EXPERIENT)
     CONFIG.LOGNAME = osp.join(CONFIG.SAVE_DIR, "log.txt")
 
     # Dataset
     dataset = MultiDataSet(
         CONFIG.ROOT,
-        CONFIG.CROPSIZE
+        CONFIG.CROPSIZE,
+        preload=False
     )
 
     # DataLoader
@@ -139,7 +141,7 @@ def main():
     }.get(CONFIG.OPTIMIZER)
 
     # Loss definition
-    criterion = CrossEntropyLoss2d()
+    criterion = SoftCrossEntropyLoss2d()
     criterion.to(device)
 
     #visualizer
@@ -147,9 +149,8 @@ def main():
 
     model.train()
     model.module.scale.freeze_bn()
-
+    iter_start_time = time.time()
     for iteration in range(CONFIG.ITER_START, CONFIG.ITER_MAX + 1):
-
         # Set a learning rate
         poly_lr_scheduler(
             optimizer=optimizer,
@@ -182,6 +183,9 @@ def main():
             for output in outputs:
                 # Resize target for {100%, 75%, 50%, Max} outputs
                 target_ = resize_target(target, output.size(2))
+                classmap = class_to_target(target_, CONFIG.N_CLASSES)
+                target_ = label_bluring(classmap)  # soft crossEntropy target
+                target_ = torch.from_numpy(target_).float()
                 target_ = target_.to(device)
                 # Compute crossentropy loss
                 loss += criterion(output, target_)
@@ -196,11 +200,11 @@ def main():
         optimizer.step()
         # Visualizer and Summery Writer
         if iteration % CONFIG.ITER_TF == 0:
-            print("itr {}, loss is {}".format(iteration, iter_loss), file=open(CONFIG.LOGNAME, "a"))
+            print("itr {}, loss is {}".format(iteration, iter_loss), file=open(CONFIG.LOGNAME, "a"))  #
+            # print("time taken for each iter is %.3f" % ((time.time() - iter_start_time)/iteration))
             # vis.drawLine(torch.FloatTensor([iteration]), torch.FloatTensor([iter_loss]))
             # vis.displayImg(inputImgTransBack(data), classToRGB(outputs[3][0].to("cpu").max(0)[1]),
             #                classToRGB(target[0].to("cpu")))
-
         # Save a model
         if iteration % CONFIG.ITER_SNAP == 0:
             save_network(CONFIG.SAVE_DIR, model, "SateDeepLab", iteration)

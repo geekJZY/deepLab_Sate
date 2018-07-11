@@ -20,7 +20,7 @@ PYRAMIDS: [6, 12, 18, 24]
 CROPSIZE: 420
 BATCH_SIZE: 5
 IGNORE_LABEL: -1
-ITER_START: 5800
+ITER_START: 1
 ITER_MAX: 20000
 ITER_SIZE: 2
 ITER_SNAP: 5000
@@ -30,10 +30,11 @@ LR: 2.5e-5
 MOMENTUM: 0.9
 OPTIMIZER: sgd
 POLY_POWER: 0.9
-WEIGHT_DECAY: 5.0e-4
+WEIGHT_DECAY: 2.0e-5
 
 INIT_MODEL: ./init/models/deeplab_resnet101/coco_init/deeplabv2_resnet101_COCO_init.pth
-SAVE_DIR: /scratch/user/jiangziyu/deepLab_v2/checkpoints/
+SAVE_DIR: /scratch/user/jiangziyu/deepLab_v2/checkpoints
+EXPERIENT: deepLabV2
 LOG_DIR: runs
 NUM_WORKERS: 1
 DISPLAYPORT: 8097

@@ -20,6 +20,7 @@ def load_network(saveDir, network, network_label, epoch_label):
     save_filename = '%s_net_%s.pth' % (epoch_label, network_label)
     save_path = osp.join(saveDir, save_filename)
     network.load_state_dict(torch.load(save_path))
+    print("the network load is in " + save_path)
 
 
 def save_network(saveDir, network, network_label, epoch_label):
@@ -57,7 +58,8 @@ def main():
         CONFIG.ROOT,
         CONFIG.CROPSIZE,
         phase="crossvali",
-        testFlag=True
+        testFlag=True,
+        preload=False
     )
 
     # DataLoader
@@ -73,7 +75,7 @@ def main():
     torch.set_grad_enabled(False)
     model = DeepLabV2_ResNet101_MSC(n_classes=CONFIG.N_CLASSES)
     model = nn.DataParallel(model)
-    load_network(CONFIG.SAVE_DIR, model, "SateDeepLab", "5000")
+    load_network(CONFIG.SAVE_DIR, model, "SateDeepLab", "latest")
     model.to(device)
 
     #visualizer

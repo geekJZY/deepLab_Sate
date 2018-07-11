@@ -68,6 +68,25 @@ def classToRGB(label):
     return transform(colmap.astype(np.uint8))
 
 
+def class_to_target(inputs, numClass):
+    batchSize, l, w = inputs.shape[0], inputs.shape[1], inputs.shape[2]
+    target = np.zeros(shape=(batchSize, l, w, numClass), dtype=np.float32)
+    for index in range(7):
+        indices = np.where(inputs == index)
+        temp = np.zeros(shape=7, dtype=np.float32)
+        temp[index] = 1
+        target[indices[0].tolist(), indices[1].tolist(), indices[2].tolist(), :] = temp
+    return target.transpose(0, 3, 1, 2)
+
+
+def label_bluring(inputs):
+    batchSize, numClass, height, width = inputs.shape
+    outputs = np.ones((batchSize, numClass, height, width), dtype=np.float)
+    for batchCnt in range(batchSize):
+        for index in range(numClass):
+            outputs[batchCnt, index, ...] = cv2.GaussianBlur(inputs[batchCnt, index, ...].astype(np.float), (7, 7), 0)
+    return outputs
+
 def inputImgTransBack(inputs):
     image = inputs[0].to("cpu")
     image[0] = image[0] + 0.3964
@@ -79,7 +98,7 @@ def inputImgTransBack(inputs):
 class MultiDataSet(data.Dataset):
     """input and label image dataset"""
 
-    def __init__(self, root, cropSize, phase="train", labelExtension='.png', testFlag=False):
+    def __init__(self, root, cropSize, phase="train", labelExtension='.png', testFlag=False, preload=True):
         super(MultiDataSet, self).__init__()
         """
         Args:
@@ -93,20 +112,28 @@ class MultiDataSet(data.Dataset):
         self.fileDir = join(self.root, phase)
         self.labelExtension = labelExtension
         self.testFlag = testFlag
+        self.preload = preload
         self.image_filenames = [image_name for image_name in listdir(self.fileDir + '/Sat') if
                                 is_image_file(image_name)]
+        if self.preload:
+            self.images = []
+            self.labels = []
+            self._pre_load()
         self.classdict = {1: "urban", 2: "agriculture", 3: "rangeland", 4: "forest", 5: "water", 6: "barren",
                           0: "unknown"}
 
     def __getitem__(self, index):
-        Satsample = cv2.imread(join(self.fileDir, 'Sat/' + self.image_filenames[index]))
-        image = cv2.cvtColor(Satsample, cv2.COLOR_BGR2RGB)
-        labelsamplename = find_label_map_name(self.image_filenames[index], self.labelExtension)
-        labelsample = cv2.imread(join(self.fileDir, 'Label/' + labelsamplename))
-        label = cv2.cvtColor(labelsample, cv2.COLOR_BGR2RGB)
-        label = RGB_mapping_to_class(label)
+        if not self.preload:
+            Satsample = cv2.imread(join(self.fileDir, 'Sat/' + self.image_filenames[index]))
+            image = cv2.cvtColor(Satsample, cv2.COLOR_BGR2RGB)
+            labelsamplename = find_label_map_name(self.image_filenames[index], self.labelExtension)
+            labelsample = cv2.imread(join(self.fileDir, 'Label/' + labelsamplename))
+            label = cv2.cvtColor(labelsample, cv2.COLOR_BGR2RGB)
+            label = RGB_mapping_to_class(label)
+        else:
+            image = self.images[index]
+            label = self.labels[index]
         image, label = self._transform(image, label)
-
         image = image/255 - self.mean
         image = image.transpose(2, 0, 1)
         return image.astype(np.float32), label.astype(np.int64)
@@ -147,6 +174,20 @@ class MultiDataSet(data.Dataset):
                 label = np.fliplr(label).copy()  # HW
 
         return image, label
+
+    def _pre_load(self):
+        print("preloading images and labels")
+        for index, image_name in enumerate(self.image_filenames):
+            print("loading image {}".format(index))
+            Satsample = cv2.imread(join(self.fileDir, 'Sat/' + image_name))
+            image = cv2.cvtColor(Satsample, cv2.COLOR_BGR2RGB)
+            labelsamplename = find_label_map_name(image_name, self.labelExtension)
+            labelsample = cv2.imread(join(self.fileDir, 'Label/' + labelsamplename))
+            label = cv2.cvtColor(labelsample, cv2.COLOR_BGR2RGB)
+            label = RGB_mapping_to_class(label)
+            self.images.append(image.astype(np.float32))
+            self.labels.append(label.astype(np.int64))
+        print("finish preloading")
 
     def __len__(self):
         return len(self.image_filenames)
